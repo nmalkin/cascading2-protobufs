@@ -8,6 +8,9 @@ import cascading.tap.Tap;
 import cascading.tuple.Fields;
 import cascading.tuple.Tuple;
 import cascading.tuple.TupleEntry;
+import com.google.protobuf.Descriptors;
+import com.google.protobuf.DynamicMessage;
+import com.google.protobuf.ExtensionRegistry;
 import com.google.protobuf.ExtensionRegistryLite;
 import com.google.protobuf.Message;
 import com.squareup.cascading2.util.Util;
@@ -28,16 +31,23 @@ public class ProtobufScheme extends SequenceFile {
   private transient Message.Builder prototype;
   private final String fieldName;
   private final String messageClassName;
-  private final ExtensionRegistryLite registry;
+  private final ExtensionRegistry registry;
+  private final Descriptors.Descriptor descriptor;
 
   public ProtobufScheme(String fieldName, Class<? extends Message> messageClass) {
-    this(fieldName, messageClass, null);
-  }
-
-  public ProtobufScheme(String fieldName, Class<? extends Message> messageClass, ExtensionRegistryLite registry) {
     super(new Fields(fieldName));
     this.fieldName = fieldName;
-    messageClassName = messageClass.getName();
+    this.descriptor = null;
+    this.messageClassName = messageClass.getName();
+    this.registry = null;
+  }
+
+  public ProtobufScheme(String fieldName, Descriptors.Descriptor descriptor, ExtensionRegistry registry) {
+    super(new Fields(fieldName));
+    this.fieldName = fieldName;
+    this.descriptor = descriptor;
+    // FIXME: NPE if descriptor is null
+    this.messageClassName = descriptor.getFullName();
     this.registry = registry;
   }
 
@@ -66,11 +76,12 @@ public class ProtobufScheme extends SequenceFile {
     Tuple tuple = sourceCall.getIncomingEntry().getTuple();
     tuple.clear();
 
-    Message.Builder builder = getPrototype();
-    builder.clear();
     if (registry != null) {
-      tuple.add(builder.mergeFrom(value.getBytes(), 0, value.getLength(), registry).build());
+      tuple.add(DynamicMessage.parseFrom(descriptor, value.getBytes(), registry));
     } else {
+      Message.Builder builder = getPrototype();
+      builder.clear();
+
       tuple.add(builder.mergeFrom(value.getBytes(), 0, value.getLength()).build());
     }
 
